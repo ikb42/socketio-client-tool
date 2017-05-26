@@ -1,9 +1,9 @@
-'use strict'
+'use strict';
 
 var eventsToListen = ['message'];
 var socket = {};
 var disconnectedInerval;
-var url = '';
+var url = '', token = '', path = 'socket.io';
 var title = document.title;
 
 $(function () {
@@ -12,13 +12,44 @@ $(function () {
 
   $("#connect").submit(function (e) {
     e.preventDefault();
+    
     url = $("#connect input:first").val().trim();
+    token = $("#token").val().trim();
+    path = $("#path").val().trim() || path;
+    
     if(url === '') {
       console.error('Invalid URL given');
-    } else {
-      socket = io(url);
+    } 
+    else {
+      console.log('#connect url: ', url, '  token: ', token, '   path: ', path);
+      
+      socket = io(url, {
+          path: '/' + path,
+          query: 'token=' + token,
+//        transports: ['websocket', 'xhr-polling']
+      });
+      
       setHash();
+      
+      socket.on('event', function (event) {
+        console.log('on event... event: ', event);
+      });
+
+      socket.on('error', function (err) {
+        console.log('on error...', err);
+      });
+
+      socket.on('connect-error', function (err) {
+        console.log('on connect-error...', err);
+      });
+
+      socket.on('ping', function () {
+        console.log('on ping...');
+      });
+
       socket.on('connect', function () {
+        console.log('on connect event.....');
+          
         $('#emitDataMenuButton').removeClass('disabled');
         clearInterval(disconnectedInerval);
         document.title = title;
@@ -26,7 +57,10 @@ $(function () {
         $('.connected-alert').show().delay(5000).fadeOut(1000);
         $("#connectionPanel").prepend('<p><span class="text-muted">'+Date.now()+'</span> Connected</p>');
       });
+      
       socket.on('disconnect', function (sock) {
+        console.log('on disconnect event.....');
+          
         $('#emitDataMenuButton').addClass('disabled');
         disconnectedInerval = setInterval(function(){
           if(document.title === "Disconnected") {
@@ -39,6 +73,7 @@ $(function () {
         $('.disconnected-alert').show();
         $("#connectionPanel").prepend('<p><span class="text-muted">'+Date.now()+'</span> Disconnected --> '+sock+'</p>');
       });
+      
       registerEvents();
     }
   });
@@ -74,6 +109,7 @@ $(function () {
     }
     e.preventDefault();
   });
+  
   processHash();
 });
 
@@ -84,7 +120,7 @@ function setHash() {
     if(messageIndex !== -1) {
       hashEvents.splice(messageIndex, 1);
     }
-    location.hash = "url="+window.btoa(url)+"&events="+hashEvents.join();
+    location.hash = "url="+window.btoa(url) + "&path="+window.btoa(path) + "&token="+window.btoa(token) + "&events="+hashEvents.join();
   }
 }
 
@@ -92,12 +128,16 @@ function processHash () {
   var hash = location.hash.substr(1);
   if(hash.indexOf('url=') !== -1 && hash.indexOf('events=')  !== -1) {
     var hashUrl = window.atob(hash.substr(hash.indexOf('url=')).split('&')[0].split('=')[1]);
+    var hashPath = window.atob(hash.substr(hash.indexOf('path=')).split('&')[0].split('=')[1]);
+    var hashToken = window.atob(hash.substr(hash.indexOf('token=')).split('&')[0].split('=')[1]);
     var hashEvents = hash.substr(hash.indexOf('events=')).split('&')[0].split('=')[1].split(',');
     $.merge(eventsToListen, hashEvents);
     $.each(hashEvents, function (index, value) {
       $('#eventPanels').prepend(makePanel(value));
     });
     $('#connect input:first').val(hashUrl);
+    $('#path').val(hashPath);
+    $('#token').val(hashToken);
     $('#connect').submit();
   }
 }
@@ -105,12 +145,18 @@ function processHash () {
 function registerEvents() {
   if(socket.io) {
     $.each(eventsToListen, function (index, value) {
+      var selector = jq("panel-"+value+"-content");
       socket.on(value, function (data) {
         data = data === undefined ? '-- NO DATA --' : data;
-        $("#panel-"+value+"-content").prepend('<p><span class="text-muted">'+Date.now()+'</span><strong> '+JSON.stringify(data)+'</strong></p>');
+        $(selector).prepend('<p><span class="text-muted">'+Date.now()+'</span><strong> '+JSON.stringify(data)+'</strong></p>');
       });
     });
   }
+}
+
+// escape any special chars for jquery selector
+function jq( myid ) {
+    return "#" + myid.replace( /(\*|:|\.|\[|\]|,|=|@)/g, "\\$1" );
 }
 
 function makePanel(event) {
